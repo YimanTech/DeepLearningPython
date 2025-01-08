@@ -35,7 +35,7 @@ class NetWork_PT(nn.Module):
 # Parameters
 params = {'batch_size': 4,
           'shuffle': True,
-          'num_workers': 6}
+          'num_workers': 6 if not use_cuda else 4*numgpus}
 
 max_epochs = 10
 learning_rate = 1e-3
@@ -55,11 +55,12 @@ def mnist_dataloader():
 
 def train(loss_fn_type = 'CrossEntropyLoss', network_ac_type = 'Sigmoid'):
     model = NetWork_PT(784, network_ac_type)
-    
+    model.to(device)
+        
     if loss_fn_type == 'CrossEntropyLoss':
         loss_fn = torch.nn.CrossEntropyLoss()
     else:
-        loss_fn = torch.nn.MSELoss(reduction='sum') 
+        loss_fn = torch.nn.MSELoss(reduction='sum')
 
     optimizer = torch.optim.SGD(model.parameters(), lr=learning_rate)
 
@@ -69,33 +70,24 @@ def train(loss_fn_type = 'CrossEntropyLoss', network_ac_type = 'Sigmoid'):
                         legend=['train loss', 'train acc', 'test acc'])
 
     for epoch in range(max_epochs):
-        # running_loss = 0.0
         metric = d2l.Accumulator(3)
         for i, data in enumerate(train_dataloader, 0):
             inputs, labels = data
-            inputs.squeeze_()
-            labels.squeeze_()
+            inputs = inputs.squeeze().to(device)
+            labels = labels.squeeze().to(device)
 
-            # forward + backward + optimize
             outputs = model(inputs)
-
             loss = loss_fn(outputs, labels.float())
             loss.backward()
 
             optimizer.step()
             optimizer.zero_grad()
 
-            # print statistics
-            # running_loss += loss.item()
-            # if i % 2000 == 1999:    # print every 2000 mini-batches
-            #     print(f'[{epoch + 1}, {i + 1:5d}] loss: {running_loss / 2000:.3f}')
-            #     running_loss = 0.0
-
             # visulization of results.
-            labels = d2l.argmax(labels, axis=1)
-            metric.add(float(loss), d2l.accuracy(outputs, labels), labels.numel())
-
-        test_acc = d2l.evaluate_accuracy(model, test_dataloader)
+            labels = d2l.argmax(labels, axis=1).cpu()
+            metric.add(float(loss.cpu()), d2l.accuracy(outputs.cpu(), labels), labels.numel())
+        # print(model.hidden1.data.device)
+        test_acc = d2l.evaluate_accuracy(model, test_dataloader, device)
         metrics = (metric[0] / metric[2], metric[1] / metric[2], test_acc,)
         # print(metrics)
         animator.add(epoch + 1, metrics)
